@@ -1,9 +1,7 @@
 #!/usr/bin/env perl
-use v5.010;
-
+use 5.006;
 use strict;
 use warnings;
-use autodie;
 
 use List::Util qw( first );
 use JSON::PP;
@@ -18,14 +16,13 @@ use constant DEBUG => 0;
 ###
 
 # Parses a rules json, and returns the rules set
-sub parse_ruleset
-{
+my @rules = do {
   # Constants
   #  Character classes used by the NRL rules
 
   # the NRL paper defines classes for * and $, but these are not actually used
   #  by any of the rules, so they are omitted from the IEEE version
-  state %classes = (
+  my %classes = (
     '#' => '[AEIOUY]+',
     #'*' => '[BCDFGHJKLMNPQRSTVWXZ]+',
     '.' => '[BDVGJLMNRWZ]',
@@ -38,27 +35,28 @@ sub parse_ruleset
     ':' => '[BCDFGHJKLMNPQRSTVWXZ]*',
   );
   # some regex construction
-  state $class_meta = join('', sort keys %classes);
+  my $class_meta = join('', sort keys %classes);
 
-  if (DEBUG) {
-    print STDERR "class_meta is: '$class_meta'\n";
-  }
+  if (DEBUG) { print STDERR "class_meta is: '$class_meta'\n" }
 
-  state $class_regex = qr/([\Q$class_meta\E])/;
-  state $line_regex = qr{^([\Q$class_meta\E A-Z']*)\[([^]]+)\]([\Q$class_meta\E A-Z']*)=(.+)$};
+  my $class_regex = qr/([\Q$class_meta\E])/;
+  my $line_regex = qr{^([\Q$class_meta\E A-Z']*)\[([^]]+)\]([\Q$class_meta\E A-Z']*)=(.+)$};
 
   # get rules file to use
-  my $rules_path = shift || 'rules/eng_to_ipa.json';
-  if (DEBUG) {
-    print STDERR "Rule file is: '$rules_path'\n";
-  }
-  my $rules_text = do { open my $fh, '<:raw', $rules_path; local $/; <$fh> };
-  my $rules_json = decode_json $rules_text;
+  my $rules_path = $ARGV[0] || 'rules/eng_to_ipa.json';
+  if (DEBUG) { print STDERR "Rule file is: '$rules_path'\n" }
+
+  # slurp the file, and pass to decode_json
+  my $rules_json = decode_json( do {
+    open(my $fh, '<:raw', $rules_path) or die "Failed to open rules: $!";
+    local $/;
+    <$fh>
+  } );
 
   # the groupings are actually not useful, so we instead produce
   #  a "flattened" list of rules
-  my @rules;
-  foreach my $rule_letter (keys %{$rules_json}) {
+  my @rule_list;
+  foreach my $rule_letter (sort { (length $b <=> length $a) || ($a cmp $b) } keys %{$rules_json}) {
     foreach my $line (@{$rules_json->{$rule_letter}}) {
       # parse a rule
       # split at equals and brackets into a prev, current, next, and output
@@ -73,18 +71,14 @@ sub parse_ruleset
         $next = qr/^\Q$current\E${next}/;
 
         # stash pre- and post- context, token length, and the result
-        push @rules, [$prev, $next, length($current), $result];
+        push @rule_list, [$prev, $next, length($current), $result];
       } else {
         warn "Failed to parse rule: '$line'";
       }
     }
   }
-  return @rules;
-}
-
-# Main processing
-
-my @rules = parse_ruleset($ARGV[0]);
+  @rule_list;
+};
 
 if (DEBUG) {
   # rules dump and phoneme report
@@ -95,15 +89,17 @@ if (DEBUG) {
     my $temp_rule = $rule->[3];
     $temp_rule =~ s/[\[\]\/]//g;
     foreach my $phon (split / /, $temp_rule) {
-      $phonemes{$phon} ++;
+      $phonemes{$phon} ++
     }
   }
   print STDERR "\nPHONEME FREQ\n------------\n";
   foreach my $phon (sort keys %phonemes)
   {
-    print STDERR "$phon: $phonemes{$phon}\n";
+    print STDERR "$phon: $phonemes{$phon}\n"
   }
 }
+
+# Main processing
 
 # read input file
 my $input = do { local $/; <STDIN> };
@@ -115,14 +111,12 @@ $input =~ s/([^A-Z ]+)/ $1 /g;
 # Standardize other whitespacing
 $input =~ s/\s+/ /g;
 
-if (DEBUG) {
-  # print normalized string
-  print STDERR "Normalized input: [$input]\n";
-}
+# print normalized string
+if (DEBUG) { print STDERR "Normalized input: [$input]\n" }
 
 # now convert
 my $idx = 1;
-TOKEN: while ($idx < length($input)) {
+while ($idx < length($input)) {
   # redoing substrings like this is probably NOT the fastest solution...
   my $parsed = substr $input, 0, $idx;
   my $rest = substr $input, $idx;
@@ -135,10 +129,10 @@ TOKEN: while ($idx < length($input)) {
       print $rule->[3];
       # advance by the token length
       $idx += $rule->[2];
-      next TOKEN;
+      next;
   } else {
     # No match to any known rules - this is a bad character or something.
-    warn "RULE ERROR: Failed to match at position $idx in '$input'\n\tfrom here: " . substr($rest, 10) . "...";
+    warn "RULE ERROR: Failed to match at position $idx in '$input'\n\tfrom here: " . substr($rest, 10) . '...';
     print " ";
     $idx ++;
   }

@@ -1,4 +1,4 @@
-# p5-NRL-TextToPhonetics
+# p5-NRL-TextToPhoneme
 Perl implementation of the Naval Research Laboratory text-to-phoneme algorithm,
 described by Elovitz _et al._ (1976).
 
@@ -192,8 +192,9 @@ Rules are kept in a folder called `rules/` and written as a JSON file. The
 group names are arbitrary and reproduced from the original paper. Note that
 rules from one group must NOT interfere with those from another: for instance
 an "ER" group and an "E" group will probably not work properly, because the
-final rule for "E" could prevent a match against "ER" (depending on sort order
-of the Perl hash).
+final rule for "E" could prevent a match against "ER", depending on sort order
+of the Perl hash.  (The 1976 IPA-to-Votrax rules actually do this, so there is
+a workaround in the script, but you shouldn't rely on it.)
 
 Three sets of rules are provided:
 * `eng_to_ipa.json` - the original ruleset for English to IPA, reproduced from
